@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Values.deployment_name}}-preconfig-job
+  annotations:
+    "helm.sh/hook": "pre-install,pre-upgrade"
+    "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+    "helm.sh/hook-weight": "1"
+
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: regsecret
+      containers:
+        - name: {{ .Values.deployment_name}}-pre-config
+          image: {{ .Values.image.name }}:{{ .Values.image.tag }}
+          imagePullPolicy: IfNotPresent
+          command: ["echo hello; sleep(5); echo done; exit(1)"]
+#          args: ['hooks run before_start']
+
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 0
+
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1

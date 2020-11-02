@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.deployment_name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.deployment_name }}
+  strategy:
+    type: {{ .Values.deployment_strategy.type }}
+  {{- if eq .Values.deployment_strategy.type "RollingUpdate" }}
+  rollingUpdate:
+    maxSurge: {{ .Values.deployment_strategy.max_surge }}
+    maxUnavailable: {{ .Values.deployment_strategy.max_unavailable }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.deployment_name }}
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - {{ .Values.deployment_name }}
+              topologyKey: kubernetes.io/hostname
+      imagePullSecrets:
+        - name: regsecret
+      containers:
+        - image: {{ .Values.image.name }}:{{ .Values.image.tag }}
+          name: {{ .Values.deployment_name }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["{{ .Values.app_settings.run_command }}"]
+          env:
+
+            - name: CONFIRMATION_LINK
+              value: "{{ .Values.app_settings.confirmation.confirmation_link }}"
+            - name: ADMINS_CONFIRMATION_LINK
+              value: "{{ .Values.app_settings.confirmation.admins_confirmation_link }}"
+            - name: ADMIN_EMAIL
+              value: "{{ .Values.app_settings.admin_email }}"
+
+            - name: CONFIG
+              value: "{{ .Values.app_settings.config }}"
+            - name: MIN_API_VERSION
+              value: "{{ .Values.app_settings.min_api_version }}"
+
+            - name: SANIC_WORKERS
+              value: "{{ .Values.drivers.sanic.workers }}"
+            - name: RPC_WORKERS
+              value: "{{ .Values.drivers.rpc.workers }}"
+            - name: SERVICE_WORKERS
+              value: "{{ .Values.drivers.service.workers }}"
+            - name: MIN_RESPOND_DELTA
+              value: "{{ .Values.app_settings.min_respond_delta }}"
+
+            - name: SANIC_HOST
+              value: "{{ .Values.drivers.sanic.host }}"
+            - name: SANIC_PORT
+              value: "{{ .Values.service.internalPortHttp }}"
+            - name: DATABASE_HOST
+              value: "{{ .Values.postgres.host }}"
+            - name: DATABASE_PORT
+              value: "{{ .Values.postgres.port }}"
+
+            - name: AMQP_BROKER_HOST
+              value: "{{ .Values.rabbitmq.host }}"
+            - name: AMQP_BROKER_PORT
+              value: "{{ .Values.rabbitmq.port }}"
+            - name: AMQP_BROKER_VHOST
+              value: "{{ .Values.rabbitmq.vhost }}"
+
+            - name: RABBITMQ_HOST
+              value: "{{ .Values.rabbitmq.host }}"
+            - name: RABBITMQ_PORT
+              value: "{{ .Values.rabbitmq.port }}"
+            - name: RABBITMQ_VHOST
+              value: "{{ .Values.rabbitmq.vhost }}"
+
+            - name: SENTRY_DSN
+              value: "{{ .Values.sentry.dsn }}"
+            - name: SENTRY_ENV
+              value: "{{ .Values.sentry.env }}"
+
+            - name: IAM_HOST
+              value: "{{ .Values.iam.host }}"
+            - name: IAM_HTTP_PORT
+              value: "{{ .Values.iam.http_port }}"
+            - name: IAM_GRPC_PORT
+              value: "{{ .Values.iam.grpc_port }}"
+
+            - name: USER_JWT_SIGNATURE
+              valueFrom:
+                secretKeyRef:
+                  key: value
+                  name: user-jwt-signature
+            - name: IAM_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  key: secret_key
+                  name: iam-grpc-credentials
+
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: {{ .Values.microservice_name }}-database-credentials
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: {{ .Values.microservice_name }}-database-credentials
+            - name: DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  key: database
+                  name: {{ .Values.microservice_name }}-database-credentials
+            - name: AMQP_BROKER_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: {{ .Values.microservice_name }}-amqp-credentials
+            - name: AMQP_BROKER_PASS
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: {{ .Values.microservice_name }}-amqp-credentials
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: {{ .Values.microservice_name }}-rabbitmq-credentials
+            - name: RABBITMQ_PASS
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: {{ .Values.microservice_name }}-rabbitmq-credentials
+
+          {{- if .Values.w_service }}
+          livenessProbe:
+            failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+            httpGet:
+              path: /{{ .Values.microservice_name }}/health
+              port: {{ .Values.service.internalPortHttp }}
+              scheme: HTTP
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+            successThreshold: {{ .Values.livenessProbe.successThreshold }}
+            timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+
+          ports:
+            - containerPort: {{ .Values.service.internalPortHttp }}
+              name: http
+              protocol: TCP
+          {{- end }}
+
+          resources:
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.requests.memory }}

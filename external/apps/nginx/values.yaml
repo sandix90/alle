@@ -1,0 +1,8 @@
+apiVersion: apps/v1
+deployment_name: nginx
+replicaCount: 1
+
+image:
+  name: nginx
+  tag: latest
+  pullPolicy: Always

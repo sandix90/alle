@@ -1,0 +1,34 @@
+deployment_name: offers-sanic
+w_service: true
+w_preconfig_job: true
+w_secrets: true
+
+app_settings:
+  run_command: start sanic
+  preconfig_migrations_enabled: true
+  iam_enabled: true
+
+drivers:
+  sanic:
+    workers: 1
+    host: 0.0.0.0
+    access_log: false
+
+service:
+  internalPortHttp: 8080
+  externalPortHttp: 8080
+
+livenessProbe:
+  failureThreshold: 5
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  successThreshold: 1
+  timeoutSeconds: 40
+
+resources:
+  limits:
+    memory: 420Mi
+    cpu: 750m
+  requests:
+    memory: 256Mi
+    cpu: 500m

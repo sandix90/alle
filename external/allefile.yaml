@@ -1,0 +1,123 @@
+#releases:
+#  - release1:
+#    manifests:
+#      - package1:
+#          - schema1
+#      - package2:
+#          - schema2
+#      - package3:
+#          - schema3
+#              manifests:
+#                - deployment
+#                - service
+
+pre_config:
+  - name: global_pre_job
+    schema:
+      path: test_schema
+      manifests:
+        - path: pre_job.yaml
+    order: 1
+    secrets: global_pre_config_job_secrets.yaml
+
+{{ $schema := "./external/schemas/offers" }}
+releases:
+
+  - name: offers
+#    pre_config:
+#      - name: pre_job1
+#        schema:
+#          path: {{ $schema }}
+#          manifests:
+#            - name: job.yaml
+#        secrets: secrets_file
+
+    packages:
+      - name: sanic
+        schema:
+          path: {{ $schema }}
+          manifests:
+            - name: deployment.yaml
+            - name: service.yaml
+
+        vars:
+          - "./external/apps/offers/values.yaml"
+          - "./external/apps/offers/sanic_values.yaml"
+        wait:
+          for: pre_job1
+          condition: completed|failed
+          timeout: 30s
+        labels:
+          pkg: offers-sanic
+
+
+      - name: rpc_service
+        schema:
+          path: {{ $schema }}
+          manifests:
+            - name: deployment.yaml
+              vars:
+                - "./external/apps/offers/values_rpc.yaml"
+        vars:
+          - "./external/apps/offers/values.yaml"
+        wait:
+          for: pre_job1
+          condition: completed|failed
+          timeout: 30s
+        labels:
+          t: test
+
+  - name: nginx
+    pre_config:
+      - name: pre_test
+        schema:
+          path: ./external/schemas/nginx
+          manifests:
+            - name: pre_job.yaml
+              vars:
+                - "./external/apps/nginx/values.yaml"
+                - "./external/apps/nginx/prejob_values.yaml"
+    packages:
+      - name: nginx
+        schema:
+          path: ./external/schemas/nginx
+          manifests:
+            - name: deployment.yaml
+        vars:
+          - "./external/apps/nginx/values.yaml"
+        labels:
+          pkg: nginx
+
+        wait:
+          for: pre_test
+          condition: completed|failed
+          timeout: 30s
+
+#  - name: test_release2
+#    pre_config:
+#      - name: pre_job3
+#        schema:
+#          path: pre_job3_schema
+#          manifests:
+#          - job.yaml
+#        secrets: secrets_file
+#        order: 1
+#      - name: pre_job4
+#        schema:
+#          path: pre_job4_schema
+#          manifests:
+#            - job.yaml
+#        secrets: secrets_file
+#        order: 2
+#    packages:
+#      - name: test_manifest2
+#        schema:
+#          path: test_schema
+#          manifests:
+#            - deployment
+#        vars:
+#          - "ale_var_file"
+#        wait:
+#          for: all
+#          condition: completed|failed
+#          timeout: 30s

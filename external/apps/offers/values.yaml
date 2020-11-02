@@ -1,0 +1,49 @@
+---
+apiVersion: apps/v1
+microservice_name: offers
+replicaCount: 1
+
+image:
+  name: reg.gitlab.itnap.ru/youfix/services/offers
+  tag: 3.14.20-prod
+  pullPolicy: Always
+
+app_settings:
+  min_api_version: 3.18.2
+  config: configs/stage.config.yaml
+  min_respond_delta: 90
+  preconfig_migrations_enabled: true
+
+iam:
+  enabled: true
+
+sentry:
+  dsn:
+
+
+broker_queue:
+  bank: bank
+  mailing: mailing
+  users: users
+  scheduler: scheduler
+
+s3_buckets:
+  offers: youfix-dev-offers
+  claims: youfix-dev-claimsphotos
+  files: youfix-dev-files
+
+resources:
+  limits:
+    memory: 420Mi
+    cpu: 1500m
+  requests:
+    memory: 256Mi
+    cpu: 500m
+
+
+deployment_strategy:
+  type: RollingUpdate
+  max_surge: 0
+  max_unavailable: 2
+
+

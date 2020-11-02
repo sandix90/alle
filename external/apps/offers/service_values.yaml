@@ -1,0 +1,17 @@
+deployment_name: offers-service
+w_service: false
+
+app_settings:
+  run_command: start aiopika_service
+
+drivers:
+  service:
+    workers: 1
+
+resources:
+  limits:
+    memory: 420Mi
+    cpu: 375m
+  requests:
+    memory: 256Mi
+    cpu: 200m

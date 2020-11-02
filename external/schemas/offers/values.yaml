@@ -1,0 +1,91 @@
+ambassador:
+  id: ""
+  prefix: ""
+  rewrite: ""
+
+namespace: {}
+
+deployment_name: hello
+replicaCount: {}
+
+deployment_strategy:
+  type: "RollingUpdate"
+  max_surge: ""
+  max_unavailable: ""
+
+image:
+  name: ""
+  tag: ""
+  pullPolicy: ""
+
+app_settings:
+  config: ""
+  user_deletion_enabled: ""
+  sms_code_debug: ""
+  debug_sms_combination: ""
+  sms_code_debug_users: ""
+  min_api_version: ""
+  run_command: ""
+  min_respond_delta: ""
+  preconfig_migrations_enabled: ""
+  alembic_migration_ini_section: ""
+
+livenessProbe:
+  failureThreshold: ""
+  initialDelaySeconds: ""
+  periodSeconds: ""
+  successThreshold: ""
+  timeoutSeconds: ""
+
+service:
+  internalPortHttp: ""
+  externalPortHttp: ""
+
+resources:
+  limits:
+    cpu: ""
+    memory: ""
+  requests:
+    memory: ""
+
+drivers:
+  sanic:
+    host: ""
+    workers:
+  rpc:
+    workers:
+  service:
+    workers:
+
+env:
+  envs: []
+  secrets: []
+
+
+postgres:
+  host: ""
+  port: ""
+
+rabbitmq:
+  host: ""
+  port: ""
+  vhost: ""
+
+sentry:
+  dsn: ""
+  env: ""
+
+iam:
+  enabled: false
+  host: ""
+  http_port: ""
+  grpc_port: ""
+
+w_service: false
+w_preconfig_job: false
+w_secrets: false
+microservice_name: offers
+
+secrets:
+  - name: ""
+    values: {}
