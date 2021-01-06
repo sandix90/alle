@@ -1,15 +1,21 @@
 package main
 
 import (
-	"alle/cmd"
+	"alle/internal/cmd"
+	log "github.com/sirupsen/logrus"
+	"os"
 )
 
 func main() {
-	//configurateLogger()
-	cmd.Execute()
+	commander, err := cmd.NewCommander()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	err = commander.Execute()
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
-
-//func configurateLogger()  {
-//
-//
-//}

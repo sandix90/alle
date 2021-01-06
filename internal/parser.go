@@ -8,11 +8,10 @@ import (
 	"strings"
 )
 
-
 type Wait struct {
-	For string `validate:"required"`
+	For       string `validate:"required"`
 	Condition string `validate:"required"`
-	Timeout string
+	Timeout   string
 }
 
 type Manifest struct {
@@ -21,19 +20,19 @@ type Manifest struct {
 }
 
 type Schema struct {
-	Path string `validate:"required"`
+	Path      string     `validate:"required"`
 	Manifests []Manifest `validate:"dive"`
 }
 
 type Package struct {
-	Name string `validate:"required"`
+	Name   string  `validate:"required"`
 	Schema *Schema `validate:"dive"`
 	Labels map[string]string
-	Vars []string
-	Wait *Wait
+	Vars   []string
+	Wait   *Wait
 }
 
-func (pack *Package) GetStringSchemaManifests() ([]string, error){
+func (pack *Package) GetStringSchemaManifests() ([]string, error) {
 	var templatesOutput []string
 
 	for _, manifest := range pack.Schema.Manifests {
@@ -53,13 +52,13 @@ func (pack *Package) GetStringSchemaManifests() ([]string, error){
 				return nil, err
 			}
 			if finalValues.Values != nil {
-				*finalValues.Values = mergeMaps(*finalValues.Values, *localValues.Values)
+				*finalValues.Values = MergeMaps(*finalValues.Values, *localValues.Values)
 			} else {
 				finalValues = localValues
 			}
 		}
 
-		for _, manifestVarFile := range manifest.Vars{
+		for _, manifestVarFile := range manifest.Vars {
 			localValues := TemplateValues{}
 
 			err := ParseAlleValues(&localValues, manifestVarFile)
@@ -67,7 +66,7 @@ func (pack *Package) GetStringSchemaManifests() ([]string, error){
 				return nil, err
 			}
 			if finalValues.Values != nil {
-				*finalValues.Values = mergeMaps(*finalValues.Values, *localValues.Values)
+				*finalValues.Values = MergeMaps(*finalValues.Values, *localValues.Values)
 			} else {
 				finalValues = localValues
 			}
@@ -83,20 +82,20 @@ func (pack *Package) GetStringSchemaManifests() ([]string, error){
 	return templatesOutput, nil
 }
 
-type Release struct{
-	Name string `json:"name" validate:"required"`
-	Packages []*Package `validate:"dive"`
+type Release struct {
+	Name      string       `json:"name" validate:"required"`
+	Packages  []*Package   `validate:"dive"`
 	PreConfig []*PreConfig `yaml:"pre_config" json:"pre_config" validate:"dive"`
 }
 
-func (release *Release) GetStringPreConfigManifests() ([]string, error){
+func (release *Release) GetStringPreConfigManifests() ([]string, error) {
 	var out []string
 
-	for _, preconfig := range release.PreConfig{
+	for _, preconfig := range release.PreConfig {
 		if mans, err := preconfig.GetStringManifests(); err != nil {
 			return nil, err
 		} else {
-			for _, man :=range mans{
+			for _, man := range mans {
 				out = append(out, man)
 			}
 
@@ -106,13 +105,13 @@ func (release *Release) GetStringPreConfigManifests() ([]string, error){
 }
 
 type PreConfig struct {
-	Name string `validate:"required"`
-	Schema *Schema `validate:"dive"`
+	Name    string  `validate:"required"`
+	Schema  *Schema `validate:"dive"`
 	Secrets string
-	Order int
+	Order   int
 }
 
-func (pc *PreConfig) GetStringManifests() ([]string, error){
+func (pc *PreConfig) GetStringManifests() ([]string, error) {
 
 	var templatesOutput []string
 
@@ -133,13 +132,13 @@ func (pc *PreConfig) GetStringManifests() ([]string, error){
 				return nil, err
 			}
 			if finalValues.Values != nil {
-				*finalValues.Values = mergeMaps(*finalValues.Values, *localValues.Values)
+				*finalValues.Values = MergeMaps(*finalValues.Values, *localValues.Values)
 			} else {
 				finalValues = localValues
 			}
 		}
 
-		for _, manifestVarFile := range manifest.Vars{
+		for _, manifestVarFile := range manifest.Vars {
 			localValues := TemplateValues{}
 
 			err := ParseAlleValues(&localValues, manifestVarFile)
@@ -147,7 +146,7 @@ func (pc *PreConfig) GetStringManifests() ([]string, error){
 				return nil, err
 			}
 			if finalValues.Values != nil {
-				*finalValues.Values = mergeMaps(*finalValues.Values, *localValues.Values)
+				*finalValues.Values = MergeMaps(*finalValues.Values, *localValues.Values)
 			} else {
 				finalValues = localValues
 			}
@@ -165,13 +164,12 @@ func (pc *PreConfig) GetStringManifests() ([]string, error){
 }
 
 type AlleConfig struct {
-	Environment string `validate:"required"`
-	Releases []*Release `yaml:"releases" validate:"dive"`
+	Environment     string       `validate:"required"`
+	Releases        []*Release   `yaml:"releases" validate:"dive"`
 	GlobalPreConfig []*PreConfig `yaml:"pre_config" validate:"dive"`
 }
 
-
-func UnmarshalAlleConfig(aleConfig *AlleConfig, file string) error{
+func UnmarshalAlleConfig(aleConfig *AlleConfig, file string) error {
 	var b bytes.Buffer
 
 	tmpl := template.Must(template.ParseFiles(file))
@@ -188,17 +186,17 @@ func UnmarshalAlleConfig(aleConfig *AlleConfig, file string) error{
 	}
 
 	err = ValidateStruct(aleConfig)
-	if err != nil{
-		return  err
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
-func FindByLabel(pack *Package, labels []string) bool{
-	for l, v := range pack.Labels{
-		for _, al := range labels{
+func FindByLabel(pack *Package, labels []string) bool {
+	for l, v := range pack.Labels {
+		for _, al := range labels {
 			parts := strings.Split(al, "=")
-			if l == parts[0] && v == parts[1]{
+			if l == parts[0] && v == parts[1] {
 				return true
 			}
 		}

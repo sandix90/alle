@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func MonitorPods() error{
+func MonitorPods() error {
 	clientSet, err := GetKubeClient()
 	if err != nil {
 		return err
@@ -19,7 +19,6 @@ func MonitorPods() error{
 		"zombie",
 		fields.Everything(),
 	)
-	type castEntity *corev1.Pod
 	_, controller := cache.NewInformer(
 		watchList,
 		&corev1.Pod{},

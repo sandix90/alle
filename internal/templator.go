@@ -74,13 +74,13 @@ func GetPackageStringManifests(pack *Package) ([]string, error) {
 				return nil, err
 			}
 			if finalValues.Values != nil {
-				*finalValues.Values = mergeMaps(*finalValues.Values, *localValues.Values)
+				*finalValues.Values = MergeMaps(*finalValues.Values, *localValues.Values)
 			} else {
 				finalValues = localValues
 			}
 		}
 
-		for _, manifestVarFile := range manifest.Vars{
+		for _, manifestVarFile := range manifest.Vars {
 			localValues := TemplateValues{}
 
 			err := ParseAlleValues(&localValues, manifestVarFile)
@@ -88,7 +88,7 @@ func GetPackageStringManifests(pack *Package) ([]string, error) {
 				return nil, err
 			}
 			if finalValues.Values != nil {
-				*finalValues.Values = mergeMaps(*finalValues.Values, *localValues.Values)
+				*finalValues.Values = MergeMaps(*finalValues.Values, *localValues.Values)
 			} else {
 				finalValues = localValues
 			}
@@ -127,7 +127,6 @@ func GetStringTemplatesByLabels(filepath string, environment string, labels []st
 		log.Debugln(out)
 
 		for _, pack := range release.Packages {
-
 
 			labelFound := FindByLabel(pack, labels)
 			if labelFound {

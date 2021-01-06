@@ -7,9 +7,9 @@ import (
 	"os"
 )
 
-func listCmd() *cobra.Command{
+func listCmd() *cobra.Command {
 	listCmd := &cobra.Command{
-		Use: "list",
+		Use:   "list",
 		Short: "list",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := listEntities(args)
@@ -23,7 +23,7 @@ func listCmd() *cobra.Command{
 	return listCmd
 }
 
-func listEntities(args []string) error{
+func listEntities(args []string) error {
 
 	client, err := kubeclient.GetKubeClient()
 	if err != nil {

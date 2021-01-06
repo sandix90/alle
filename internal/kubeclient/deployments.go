@@ -42,8 +42,10 @@ func DeleteDeployment(kubeclient *kubernetes.Clientset, namespace string, manife
 
 func CreateDeployment(kubeclient *kubernetes.Clientset, namespace string, manifests []string) error {
 	//config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
-	//dynclient, err := dynamic.NewForConfig(config)
-	//dynclient.Resource().
+	//dynclient, err := kubernetes.NewForConfig(config)
+
+	//dynclient.AppsV1().
+
 	deploymentClient := getDeploymentClient(kubeclient, namespace)
 
 	for _, manifest := range manifests {
