@@ -13,5 +13,5 @@ type TemplateValues struct {
 type AlleConfig struct {
 	Environment     string       `validate:"required"`
 	Releases        []*Release   `yaml:"releases" validate:"dive"`
-	GlobalPreConfig []*PreConfig `yaml:"pre_config" validate:"dive"`
+	GlobalPreConfig []*PreConfig `yaml:"pre_config" validate:"omitempty,dive"`
 }

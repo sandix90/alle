@@ -7,6 +7,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,9 +47,9 @@ func NewKubeClient(client dynamic.Interface, namespace string, config *rest.Conf
 func (k *kubernetesClientImpl) ApplyManifest(manifest models.IManifestor) error {
 	obj := &unstructured.Unstructured{}
 
-	manifestStr, err := manifest.String()
-	if err != nil {
-		return fmt.Errorf("cant convert manifest to string. Manifest name: %s", manifest.GetName())
+	manifestStr := manifest.String()
+	if manifestStr == "" {
+		return fmt.Errorf("error get string manifest. Filename: %s", manifest.GetFullName())
 	}
 
 	dec := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
@@ -69,30 +70,54 @@ func (k *kubernetesClientImpl) ApplyManifest(manifest models.IManifestor) error 
 	if err != nil {
 		return err
 	}
+
+	obj, err = dr.Patch(obj.GetName(), types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "sample-controller"})
+	if err != nil {
+		return err
+	}
+	log.Debugf(`Manifest "%s" applied`, manifest.GetFullName())
 	err = k.createAlleCrdManifest(manifest)
 	if err != nil {
 		return err
 	}
-
-	_, err = dr.Patch(obj.GetName(), types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "sample-controller"})
-	if err != nil {
-		return err
-	}
-	log.Debugf(`Manifest "%s" applied`, manifest.GetFullPath())
 	return nil
 }
 
 func (k *kubernetesClientImpl) GetManifestsList() ([]models.IManifestor, error) {
-	panic("implement me")
+	amGVK := &schema.GroupVersionKind{
+		Group:   "alle.org",
+		Version: "v1",
+		Kind:    "AlleManifest",
+	}
+
+	amGvr, err := k.findGVR(amGVK)
+	if err != nil {
+		return nil, err
+	}
+	amDynRes, err := k.getDynamicResource(amGvr)
+	if err != nil {
+		return nil, err
+	}
+	lst, err := amDynRes.List(metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(map[string]string{"deployed": "alle"}).String(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range lst.Items {
+		log.Debugln(item)
+	}
+	return nil, nil
+
 }
 
 func (k *kubernetesClientImpl) DeleteManifest(manifest models.IManifestor) error {
 	obj := &unstructured.Unstructured{}
 
-	manifestStr, err := manifest.String()
-	if err != nil {
-		return fmt.Errorf("cant convert manifest to string. Manifest name: %s", manifest.GetName())
-	}
+	manifestStr := manifest.String()
+	//if err != nil {
+	//	return fmt.Errorf("cant convert manifest to string. Manifest name: %s", manifest.GetFileName())
+	//}
 
 	dec := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
 	_, gvk, err := dec.Decode([]byte(manifestStr), nil, obj)
@@ -125,7 +150,7 @@ func (k *kubernetesClientImpl) DeleteManifestsList(manifests []models.IManifesto
 }
 
 func (k *kubernetesClientImpl) IsManifestDeployed(manifest models.IManifestor) (bool, error) {
-	log.Printf("Manifest is %s", manifest.GetName())
+	log.Printf("Manifest is %s", manifest.GetFileName())
 	return false, nil
 }
 
@@ -138,6 +163,7 @@ func (k *kubernetesClientImpl) findGVR(gvk *schema.GroupVersionKind) (*meta.REST
 	return mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 }
 
+// Used to get kubernetes dynamic interface by group-version-resource
 func (k *kubernetesClientImpl) getDynamicResource(gvr *meta.RESTMapping) (dynamic.ResourceInterface, error) {
 	var dr dynamic.ResourceInterface
 	if gvr.Scope.Name() == meta.RESTScopeNameNamespace {
@@ -168,7 +194,7 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor
 		"apiVersion": "alle.org/v1",
 		"kind":       "AlleManifest",
 		"metadata": map[string]interface{}{
-			"name": manifest.GetFullPath(),
+			"name": manifest.GetFullName(),
 			"labels": map[string]interface{}{
 				"deployed": "alle",
 			},
@@ -177,7 +203,8 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor
 			"apiVersion": "v1",
 			"kind":       "Deployment",
 			"metadata": map[string]interface{}{
-				"alle_version": "0.0.2",
+				"alle_version":  "0.0.2",
+				"manifest_name": manifest.GetFullName(),
 			},
 		},
 	}
@@ -185,11 +212,11 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor
 	if err != nil {
 		return err
 	}
-	_, err = amDynRes.Patch(manifest.GetFullPath(), types.ApplyPatchType, amData, metav1.PatchOptions{FieldManager: "sample-controller"})
+	_, err = amDynRes.Patch(manifest.GetFullName(), types.ApplyPatchType, amData, metav1.PatchOptions{FieldManager: "sample-controller"})
 	if err != nil {
 		return err
 	}
-	log.Debugf(`CRD Alle Manifest "%s" applied`, manifest.GetFullPath())
+	log.Debugf(`CRD Alle Manifest "%s" applied`, manifest.GetFullName())
 
 	return nil
 }
@@ -211,7 +238,7 @@ func (k *kubernetesClientImpl) deleteAlleCrdManifest(manifest models.IManifestor
 		return err
 	}
 
-	err = amDynRes.Delete(manifest.GetFullPath(), &metav1.DeleteOptions{})
+	err = amDynRes.Delete(manifest.GetFullName(), &metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

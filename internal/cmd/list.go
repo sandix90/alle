@@ -1,18 +1,16 @@
 package cmd
 
 import (
-	"alle/internal/kubeclient"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"os"
 )
 
-func listCmd() *cobra.Command {
+func listCmd(handler Handler) *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "list",
 		Run: func(cmd *cobra.Command, args []string) {
-			err := listEntities(args)
+			err := handler(args)
 			if err != nil {
 				log.Error(err)
 			}
@@ -23,15 +21,10 @@ func listCmd() *cobra.Command {
 	return listCmd
 }
 
-func listEntities(args []string) error {
-
-	client, err := kubeclient.GetKubeClient()
-	if err != nil {
-		return err
-	}
+func (cli *cli) listEntities(args []string) error {
 
 	log.Infof("Getting deployed entities...")
-	_, err = kubeclient.ListDeployments(client, environment, os.Stdout)
+	_, err := cli.kubeClient.GetManifestsList()
 	if err != nil {
 		return err
 	}

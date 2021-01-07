@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"alle/internal"
 	"alle/internal/kubeclient"
 	"alle/internal/models"
 	"alle/internal/services"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"io"
@@ -22,49 +24,81 @@ var (
 type Commander interface {
 	Execute() error
 }
-type CliHandler func(args []string) error
+type Handler func(args []string) error
 
 func NewCommander() (Commander, error) {
 	rootCmd := &cobra.Command{
 		Use: "alle",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("hello")
+		},
 	}
 	rootCmd.PersistentFlags().StringSliceVarP(&labels, "label", "l", []string{}, "specify label to select")
 	rootCmd.PersistentFlags().StringVarP(&environment, "environment", "e", "", "environment")
 	rootCmd.PersistentFlags().StringVarP(&filepath, "filepath", "f", "./allefile.yaml", "filepath to allefile.yaml")
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "set debug flag")
-	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		level := "info"
-		if debug {
-			level = "debug"
-		}
-		if err := setUpLogs(os.Stdout, level); err != nil {
-			return err
-		}
-		return nil
-	}
+	//rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+	//	level := "info"
+	//	if debug {
+	//		level = "debug"
+	//	}
+	//	if err := setUpLogs(os.Stdout, level); err != nil {
+	//		return err
+	//	}
+	//	return nil
+	//}
 
-	templator := models.NewTemplator()
+	templator := services.NewTemplator()
 	configurator := services.NewConfigurator(templator)
 	alleConfig := new(models.AlleConfig)
 
-	cli := cli{
+	cliInst := cli{
 		rootCmd:      rootCmd,
 		templator:    templator,
 		configurator: configurator,
 		alleConfig:   alleConfig,
 	}
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 
-	rootCmd.AddCommand(syncCmd(cli.syncHandler))
-	rootCmd.AddCommand(deleteCmd(cli.deleteEntityHandler))
+		return cliInst.init()
+	}
 
-	return &cli, nil
+	rootCmd.AddCommand(syncCmd(cliInst.syncHandler))
+	rootCmd.AddCommand(deleteCmd(cliInst.deleteEntityHandler))
+	rootCmd.AddCommand(listCmd(cliInst.listEntities))
+
+	return &cliInst, nil
 }
-func (cli *cli) init() {
+func (cli *cli) init() error {
 
-	err := cli.configurator.ParseConfig(cli.alleConfig, environment, filepath)
+	level := "info"
+	if debug {
+		level = "debug"
+	}
+	if err := setUpLogs(os.Stdout, level); err != nil {
+		return err
+	}
+
+	workDir, err := os.Getwd()
+	log.Debugf("Workdir: %s", workDir)
+	log.Debugf("Using alle file: %s", filepath)
+
+	err = internal.Exists(filepath)
+	if err != nil {
+		log.Errorf("alle file is not found")
+		return err
+	}
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		log.Errorf("Error open file: %s. OErr: %v", filepath, err)
+		return err
+	}
+
+	err = cli.configurator.ParseConfig(cli.alleConfig, environment, file)
 	if err != nil {
 		log.Errorf("Error parsing config. OError: %v", err)
-		return
+		return err
 	}
 
 	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
@@ -72,22 +106,22 @@ func (cli *cli) init() {
 	kubeClient, err := kubeclient.NewKubeClient(dynclient, cli.alleConfig.Environment, config)
 	if err != nil {
 		log.Errorf("Error creating KubeClient. OError: %v", err)
-		return
+		return err
 	}
 	cli.kubeClient = kubeClient
 
+	return nil
 }
 
 type cli struct {
 	rootCmd      *cobra.Command
-	templator    models.Templator
+	templator    services.Templator
 	configurator services.Configurator
 	alleConfig   *models.AlleConfig
 	kubeClient   kubeclient.IKubeClient
 }
 
 func (cli *cli) Execute() error {
-	cobra.OnInitialize(cli.init)
 	return cli.rootCmd.Execute()
 }
 

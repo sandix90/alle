@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -12,7 +11,7 @@ import (
 //	labels      []string
 //)
 
-func syncCmd(handler CliHandler) *cobra.Command {
+func syncCmd(handler Handler) *cobra.Command {
 	//cmd := &cobra.Command{
 	//	Use:     "schema",
 	//	Short:   "sch",
@@ -23,12 +22,12 @@ func syncCmd(handler CliHandler) *cobra.Command {
 	syncCmd := &cobra.Command{
 		Use:   "sync",
 		Short: "sync",
-		Run: func(cmd *cobra.Command, args []string) {
-			err := handler(args)
-			if err != nil {
-				log.Error(err)
-			}
-			return
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return handler(args)
+			//if err != nil {
+			//	log.Error(err)
+			//}
+			//return
 		},
 	}
 	//cli.rootCmd.PersistentFlags().StringSliceVarP(&labels, "label", "l", []string{}, "specify label to select")
@@ -53,7 +52,7 @@ func syncCmd(handler CliHandler) *cobra.Command {
 }
 
 func (cli *cli) syncHandler(args []string) error {
-	fmt.Printf("from syncHandler cli command %s\n", filepath)
+	//fmt.Printf("from syncHandler cli command %s\n", filepath)
 	//tmpls, err := internal.GetStringTemplatesByLabels(filepath, environment, labels)
 	//if err != nil {
 	//	return err
@@ -71,15 +70,12 @@ func (cli *cli) syncHandler(args []string) error {
 	//if err != nil {
 	//	return fmt.Errorf("error parse alle config. Origin error: %w", err)
 	//}
-
 	//tmpls, err := configurator.GetStringManifestsByLabels(alleConfig, labels)
-
 	//tmpls, err := internal.GetStringTemplatesByLabels(filepath, environment, labels)
 	//if err != nil {
 	//	return err
 	//}
 	//log.Debugln(tmpls)
-
 	//exist, err := kubeClient.IsManifestDeployed(alleConfig.Releases[0].Packages[0].Manifests[0])
 	//log.Printf("Manifest exist: %v", exist)
 
@@ -88,9 +84,8 @@ func (cli *cli) syncHandler(args []string) error {
 		for _, manifest := range pack.Manifests {
 			err := cli.kubeClient.ApplyManifest(manifest)
 			if err != nil {
-				return fmt.Errorf("cant deploy manifest. Name: %s", manifest.GetName())
+				return fmt.Errorf("cant deploy manifest. Name: %s. OError: %w", manifest.GetFullName(), err)
 			}
-			//log.Debugf("Manifest \"%s\" deployed status: ok\n", manifest.GetName())
 		}
 	}
 

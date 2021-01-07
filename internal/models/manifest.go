@@ -1,15 +1,14 @@
 package models
 
 import (
-	"alle/internal"
-	"bytes"
 	"fmt"
 )
 
 type IManifestor interface {
-	String() (string, error)
-	GetName() string
-	GetFullPath() string
+	String() string
+	GetFileName() string
+	GetFullName() string
+	GetTemplatePath() string
 }
 
 type Manifest struct {
@@ -17,73 +16,48 @@ type Manifest struct {
 	Name string `validate:"required"`
 
 	// slice of manifest files paths which contain vars for manifest template
-	Vars []string
+	VarsFilePaths []string `yaml:"vars"`
 
 	// path to template
 	templatePath string
 
 	// deserialized template values which have been read from vars files. Package value could be mixed.
-	values *TemplateValues
+	values TemplateValues
 
-	// Templator interface which allows to parse values or create string manifest
-	templator Templator
+	// templator interface which allows to parse values or create string manifest
+	//templator services.templator
+
+	// String manifest
+	manifest string
 
 	pack *Package
 }
 
-func NewManifest(name string, vars []string, templator Templator, packageValues TemplateValues, packagePath string, pack *Package) (*Manifest, error) {
-	manifestTemplatePath := fmt.Sprintf("%s/manifests/%s", packagePath, name)
-
-	// Parse manifest files with vars
-	manifestValues := new(TemplateValues)
-
-	// Merge with package values
-	manifestValues.Values = packageValues.Values
-
-	for _, varsFilePath := range vars {
-		err := internal.Exists(varsFilePath)
-		if err != nil {
-			return nil, fmt.Errorf("vars file path doesn't exist. path: %s", varsFilePath)
-		}
-
-		varsFileValues := new(TemplateValues)
-		err = templator.ParseValues(varsFileValues, varsFilePath)
-		if err != nil {
-			return nil, fmt.Errorf("error parse manifest values.\n manifest path: %s\nOrigin error: %w", manifestTemplatePath, err)
-		}
-
-		if manifestValues.Values != nil {
-			manifestValues.Values = internal.MergeMaps(manifestValues.Values, varsFileValues.Values)
-		} else {
-			manifestValues = varsFileValues
-		}
-	}
+func NewManifest(name string, varFilePaths []string, templatePath string, manifestValues TemplateValues,
+	pack *Package, stringManifest string) (*Manifest, error) {
 
 	return &Manifest{
-		Name:         name,
-		Vars:         vars,
-		templatePath: manifestTemplatePath,
-		values:       manifestValues,
-		templator:    templator,
-		pack:         pack,
+		Name:          name,
+		VarsFilePaths: varFilePaths,
+		values:        manifestValues,
+		pack:          pack,
+		templatePath:  templatePath,
+		manifest:      stringManifest,
 	}, nil
 }
 
-func (m *Manifest) String() (string, error) {
-
-	var tmplBytes bytes.Buffer
-	err := m.templator.CreateTemplate(m.templatePath, &tmplBytes, m.values)
-	if err != nil {
-		return "", err
-	}
-
-	return tmplBytes.String(), nil
+func (m *Manifest) String() string {
+	return m.manifest
 }
 
-func (m *Manifest) GetName() string {
+func (m *Manifest) GetFileName() string {
 	return m.Name
 }
 
-func (m Manifest) GetFullPath() string {
+func (m Manifest) GetFullName() string {
 	return fmt.Sprintf("%s-%s", m.pack.Name, m.Name)
+}
+
+func (m Manifest) GetTemplatePath() string {
+	return m.templatePath
 }

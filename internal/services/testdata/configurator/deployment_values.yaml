@@ -1,0 +1,3 @@
+apiVersion: apps/v1
+deployment_name: nginx-deployment
+replicaCount: 1

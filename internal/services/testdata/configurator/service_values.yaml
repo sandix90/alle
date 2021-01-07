@@ -1,0 +1,4 @@
+deployment_name: nginx-service
+service:
+  externalPortHttp: 8080
+  internalPortHttp: 8080

@@ -28,6 +28,8 @@ spec:
               properties:
                 alle_version:
                   type: string
+                manifest_name:
+                  type: string
 
   group: alle.org
   versions:

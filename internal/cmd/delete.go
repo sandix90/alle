@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func deleteCmd(handler CliHandler) *cobra.Command {
+func deleteCmd(handler Handler) *cobra.Command {
 	deleteCmd := &cobra.Command{
 		Use:   "delete",
 		Short: "del",
@@ -28,9 +28,9 @@ func (cli *cli) deleteEntityHandler(args []string) error {
 		for _, manifest := range pack.Manifests {
 			err := cli.kubeClient.DeleteManifest(manifest)
 			if err != nil {
-				return fmt.Errorf("cant deploy manifest. Name: %s. OError: %s", manifest.GetName(), err.Error())
+				return fmt.Errorf("cant deploy manifest. Name: %s. OError: %s", manifest.GetFileName(), err.Error())
 			}
-			log.Debugf("Manifest \"%s\" terminating status: ok\n", manifest.GetName())
+			log.Debugf("Manifest \"%s\" terminating status: ok\n", manifest.GetFullName())
 		}
 
 	}
