@@ -1,0 +1,13 @@
+apiVersion: alle.org/v1
+kind: AlleManifest
+metadata:
+  name: my-alle-manifest
+  labels:
+    deployed: alle
+spec:
+  apiVersion: v1
+  kind: Deployment
+  metadata:
+    alle_version: 0.0.1
+    manifest_name: nginx-deployment.yaml
+

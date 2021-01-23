@@ -66,6 +66,10 @@ func (configurator *ConfiguratorImpl) ParseConfig(alleConfig *models.AlleConfig,
 	for _, release := range alleConfig.Releases {
 		for _, pack := range release.Packages {
 
+			if found := findPackageDuplicates(release.Packages, pack.Name); found {
+				return fmt.Errorf("duplicate packages names not allowed. Duplicated pack name: \"%s\"", pack.Name)
+			}
+
 			packageValues, err := configurator.calculateTemplateValuesByFilePaths(pack.VarsFilePaths)
 			if err != nil {
 				return err
@@ -254,4 +258,18 @@ func (configurator *ConfiguratorImpl) calculateTemplateValuesByFilePaths(filePat
 	}
 
 	return finalValues, nil
+}
+
+func findPackageDuplicates(packs []*models.Package, name string) bool {
+	var foundCount uint8
+	for _, p := range packs {
+		if p.Name == name {
+			foundCount++
+		}
+
+		if foundCount > 1 {
+			return true
+		}
+	}
+	return false
 }

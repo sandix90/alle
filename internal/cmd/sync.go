@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"github.com/spf13/cobra"
 )
 
@@ -33,9 +32,7 @@ func syncCmd(handler Handler) *cobra.Command {
 	//cli.rootCmd.PersistentFlags().StringSliceVarP(&labels, "label", "l", []string{}, "specify label to select")
 	//cli.rootCmd.PersistentFlags().StringVarP(&environment, "environment", "e", "", "environment")
 	//cli.rootCmd.PersistentFlags().StringVarP(&filepath, "filepath", "f", "./allefile.yaml", "filepath to allefile.yaml")
-
 	//cli.rootCmd.AddCommand(syncCmd)
-
 	//cli.rootCmd.AddCommand(&cobra.Command{
 	//	Use:   "Template",
 	//	Short: "generate Template",
@@ -57,7 +54,7 @@ func (cli *cli) syncHandler(args []string) error {
 	//if err != nil {
 	//	return err
 	//}
-	//kubeClient, err := kubeclient.GetKubeClient()
+	//kubeClient, err := kube.GetKubeClient()
 	//if err != nil {
 	//	return err
 	//}
@@ -79,20 +76,18 @@ func (cli *cli) syncHandler(args []string) error {
 	//exist, err := kubeClient.IsManifestDeployed(alleConfig.Releases[0].Packages[0].Manifests[0])
 	//log.Printf("Manifest exist: %v", exist)
 
-	packages := cli.configurator.GetPackagesByLabels(cli.alleConfig, labels)
-	for _, pack := range packages {
-		for _, manifest := range pack.Manifests {
-			err := cli.kubeClient.ApplyManifest(manifest)
-			if err != nil {
-				return fmt.Errorf("cant deploy manifest. Name: %s. OError: %w", manifest.GetFullName(), err)
-			}
-		}
-	}
-
-	//kubeclient.MonitorPods()
-	//kubeclient.GetDepTest(tmpls)
-	//time.Sleep(time.Second*120)
-	return nil
+	packagesToApply := cli.configurator.GetPackagesByLabels(cli.alleConfig, labels)
+	return cli.deployController.ApplyPackages(packagesToApply)
+	//for _, pack := range packages {
+	//	for _, manifest := range pack.Manifests {
+	//		//gvr, _ := schema.ParseResourceArg("pods.v1.")
+	//		err := cli.kubeClient.ApplyManifest(manifest)
+	//		if err != nil {
+	//			return fmt.Errorf("cant deploy manifest. Name: %s. OError: %w", manifest.GetFullName(), err)
+	//		}
+	//	}
+	//}
+	//return nil
 }
 
 //func Template() ([]string, error) {

@@ -1,7 +1,8 @@
-package kubeclient
+package kube
 
 import (
 	"alle/internal/models"
+	"context"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -22,11 +23,11 @@ import (
 const ALLEVERSION = "0.0.1"
 
 type IKubeClient interface {
-	ApplyManifest(manifest models.IManifestor) error
-	IsManifestDeployed(manifest models.IManifestor) (bool, error)
-	GetManifestsList() ([]models.IManifestor, error)
-	DeleteManifest(manifest models.IManifestor) error
-	DeleteManifestsList(manifests []models.IManifestor) error
+	ApplyManifest(ctx context.Context, manifest models.IManifestor) error
+	IsManifestDeployed(ctx context.Context, manifest models.IManifestor) (bool, error)
+	GetManifestsList(ctx context.Context) ([]models.IManifestor, error)
+	DeleteManifest(ctx context.Context, manifest models.IManifestor) error
+	DeleteManifestsList(ctx context.Context, manifests []models.IManifestor) error
 }
 
 type kubernetesClientImpl struct {
@@ -44,7 +45,7 @@ func NewKubeClient(client dynamic.Interface, namespace string, config *rest.Conf
 	return &kubernetesClientImpl{client: client, namespace: namespace, config: config, discoveryClient: dc}, nil
 }
 
-func (k *kubernetesClientImpl) ApplyManifest(manifest models.IManifestor) error {
+func (k *kubernetesClientImpl) ApplyManifest(ctx context.Context, manifest models.IManifestor) error {
 	obj := &unstructured.Unstructured{}
 
 	manifestStr := manifest.String()
@@ -71,19 +72,19 @@ func (k *kubernetesClientImpl) ApplyManifest(manifest models.IManifestor) error 
 		return err
 	}
 
-	obj, err = dr.Patch(obj.GetName(), types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "sample-controller"})
+	obj, err = dr.Patch(ctx, obj.GetName(), types.ApplyPatchType, data, metav1.PatchOptions{FieldManager: "sample-controller"})
 	if err != nil {
 		return err
 	}
 	log.Debugf(`Manifest "%s" applied`, manifest.GetFullName())
-	err = k.createAlleCrdManifest(manifest)
+	err = k.createAlleCrdManifest(ctx, manifest)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (k *kubernetesClientImpl) GetManifestsList() ([]models.IManifestor, error) {
+func (k *kubernetesClientImpl) GetManifestsList(ctx context.Context) ([]models.IManifestor, error) {
 	amGVK := &schema.GroupVersionKind{
 		Group:   "alle.org",
 		Version: "v1",
@@ -98,7 +99,7 @@ func (k *kubernetesClientImpl) GetManifestsList() ([]models.IManifestor, error) 
 	if err != nil {
 		return nil, err
 	}
-	lst, err := amDynRes.List(metav1.ListOptions{
+	lst, err := amDynRes.List(ctx, metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(map[string]string{"deployed": "alle"}).String(),
 	})
 	if err != nil {
@@ -111,7 +112,7 @@ func (k *kubernetesClientImpl) GetManifestsList() ([]models.IManifestor, error) 
 
 }
 
-func (k *kubernetesClientImpl) DeleteManifest(manifest models.IManifestor) error {
+func (k *kubernetesClientImpl) DeleteManifest(ctx context.Context, manifest models.IManifestor) error {
 	obj := &unstructured.Unstructured{}
 
 	manifestStr := manifest.String()
@@ -132,26 +133,48 @@ func (k *kubernetesClientImpl) DeleteManifest(manifest models.IManifestor) error
 		return err
 	}
 
-	err = dr.Delete(obj.GetName(), &metav1.DeleteOptions{})
+	err = dr.Delete(ctx, obj.GetName(), metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
 
 	// Delete CustomResourceDefinition AlleManifest
-	err = k.deleteAlleCrdManifest(manifest)
+	err = k.deleteAlleCrdManifest(ctx, manifest)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (k *kubernetesClientImpl) DeleteManifestsList(manifests []models.IManifestor) error {
+func (k *kubernetesClientImpl) DeleteManifestsList(ctx context.Context, manifests []models.IManifestor) error {
 	panic("implement me")
 }
 
-func (k *kubernetesClientImpl) IsManifestDeployed(manifest models.IManifestor) (bool, error) {
-	log.Printf("Manifest is %s", manifest.GetFileName())
-	return false, nil
+func (k *kubernetesClientImpl) IsManifestDeployed(ctx context.Context, manifest models.IManifestor) (bool, error) {
+	obj := &unstructured.Unstructured{}
+
+	manifestStr := manifest.String()
+	if manifestStr == "" {
+		return false, fmt.Errorf("error get string manifest. Filename: %s", manifest.GetFullName())
+	}
+
+	dec := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
+	_, gvk, err := dec.Decode([]byte(manifestStr), nil, obj)
+
+	gvr, err := k.findGVR(gvk)
+	if err != nil {
+		return false, err
+	}
+
+	dr, err := k.getDynamicResource(gvr)
+	if err != nil {
+		return false, err
+	}
+	_, err = dr.Get(ctx, obj.GetName(), metav1.GetOptions{})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // find the corresponding GVR (available in *meta.RESTMapping) for gvk
@@ -175,7 +198,7 @@ func (k *kubernetesClientImpl) getDynamicResource(gvr *meta.RESTMapping) (dynami
 }
 
 // Used to create meta info about deployed manifests
-func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor) error {
+func (k *kubernetesClientImpl) createAlleCrdManifest(ctx context.Context, manifest models.IManifestor) error {
 	amGVK := &schema.GroupVersionKind{
 		Group:   "alle.org",
 		Version: "v1",
@@ -203,7 +226,7 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor
 			"apiVersion": "v1",
 			"kind":       "Deployment",
 			"metadata": map[string]interface{}{
-				"alle_version":  "0.0.2",
+				"alle_version":  ALLEVERSION,
 				"manifest_name": manifest.GetFullName(),
 			},
 		},
@@ -212,7 +235,7 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor
 	if err != nil {
 		return err
 	}
-	_, err = amDynRes.Patch(manifest.GetFullName(), types.ApplyPatchType, amData, metav1.PatchOptions{FieldManager: "sample-controller"})
+	_, err = amDynRes.Patch(ctx, manifest.GetFullName(), types.ApplyPatchType, amData, metav1.PatchOptions{FieldManager: "sample-controller"})
 	if err != nil {
 		return err
 	}
@@ -222,7 +245,7 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(manifest models.IManifestor
 }
 
 // Used to deleted meta info about deployed manifests
-func (k *kubernetesClientImpl) deleteAlleCrdManifest(manifest models.IManifestor) error {
+func (k *kubernetesClientImpl) deleteAlleCrdManifest(ctx context.Context, manifest models.IManifestor) error {
 	amGVK := &schema.GroupVersionKind{
 		Group:   "alle.org",
 		Version: "v1",
@@ -238,7 +261,7 @@ func (k *kubernetesClientImpl) deleteAlleCrdManifest(manifest models.IManifestor
 		return err
 	}
 
-	err = amDynRes.Delete(manifest.GetFullName(), &metav1.DeleteOptions{})
+	err = amDynRes.Delete(ctx, manifest.GetFullName(), metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

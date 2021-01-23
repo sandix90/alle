@@ -1,15 +1,14 @@
 package cmd
 
 import (
-	"context"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
-func listCmd(handler Handler) *cobra.Command {
+func initCmd(handler Handler) *cobra.Command {
 	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "list",
+		Use:   "init",
+		Short: "init",
 		Run: func(cmd *cobra.Command, args []string) {
 			err := handler(args)
 			if err != nil {
@@ -22,13 +21,13 @@ func listCmd(handler Handler) *cobra.Command {
 	return listCmd
 }
 
-func (cli *cli) listEntities(args []string) error {
+func (cli *cli) initAlleForKube(args []string) error {
 
-	log.Infof("Getting deployed entities...")
-	ctx := context.Background()
-	_, err := cli.kubeClient.GetManifestsList(ctx)
+	log.Infof("Initialize alle...")
+	err := cli.initializer.Init()
 	if err != nil {
 		return err
 	}
+	log.Infof("Initialize alle done.")
 	return nil
 }
