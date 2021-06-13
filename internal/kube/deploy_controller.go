@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/tools/clientcmd"
+	"os"
 	"sync"
 	"time"
 )
@@ -24,13 +27,32 @@ type DeployNode struct {
 }
 
 type deployControllerImpl struct {
-	kubeClient IKubeClient
-	mut        sync.RWMutex
+	kubeClient    IKubeClient
+	eventListener EventListener
+	mut           sync.RWMutex
 }
 
-func NewDeployController(kubeClient IKubeClient) DeployController {
+func NewDeployControllerFromEnv(environment string) (DeployController, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	if err != nil {
+		return nil, err
+	}
+
+	config.QPS = 100
+	dynclient, err := dynamic.NewForConfig(config)
+	kubeClient, err := NewKubeClient(dynclient, environment, config)
+	if err != nil {
+		return nil, err
+	}
+
+	eventListener := NewEventListener(dynclient)
+	return NewDeployController(kubeClient, eventListener), nil
+}
+
+func NewDeployController(kubeClient IKubeClient, eventListener EventListener) DeployController {
 	return &deployControllerImpl{
-		kubeClient: kubeClient,
+		kubeClient:    kubeClient,
+		eventListener: eventListener,
 	}
 }
 
@@ -40,15 +62,14 @@ func (d *deployControllerImpl) ApplyPackages(packs []*models.Package) error {
 	if err != nil {
 		return err
 	}
-	//log.Debugln(q)
-	//stopCh := make(chan struct{})
 
 	errCh := make(chan error)
 	wgDone := make(chan struct{})
 	wg := new(sync.WaitGroup)
 	wg.Add(len(q))
+
 	ctx := context.Background()
-	go d.applyDeployNodes(ctx, wg, q, errCh)
+	go d.applyDeployNodes(ctx, nil, wg, q, errCh)
 
 	go func() {
 		wg.Wait()
@@ -66,7 +87,10 @@ func (d *deployControllerImpl) ApplyPackages(packs []*models.Package) error {
 	return nil
 	//go StartListening(dynclient, stopCh, kube.EventListenerHandler)
 }
-func (d *deployControllerImpl) applyDeployNodes(ctx context.Context, wg *sync.WaitGroup, nodes []*DeployNode, errCh chan error) {
+
+func (d *deployControllerImpl) applyDeployNodes(ctx context.Context, caller *DeployNode, wg *sync.WaitGroup,
+	nodes []*DeployNode, errCh chan error) {
+
 	for _, n := range nodes {
 
 		if n.deployed {
@@ -77,28 +101,98 @@ func (d *deployControllerImpl) applyDeployNodes(ctx context.Context, wg *sync.Wa
 		if len(n.parents) > 0 {
 			nestedWg := new(sync.WaitGroup)
 			nestedWg.Add(len(n.parents))
+			nestedErrCh := make(chan error)
 
-			go d.applyDeployNodes(ctx, nestedWg, n.parents, errCh)
-			nestedWg.Wait()
+			go d.applyDeployNodes(ctx, n, nestedWg, n.parents, nestedErrCh)
 
-			for _, pn := range n.parents {
-				if !pn.deployed {
-					errCh <- fmt.Errorf("node %s is not deployed, but wait group is done", pn.name)
-				}
+			c := make(chan struct{})
+			go func() {
+				defer close(c)
+				nestedWg.Wait()
+			}()
+
+			select {
+			case <-c:
+				log.Debugf(`all parent packs for "%s" package has been deployed`, n.name)
+			case <-ctx.Done():
+				return
+			case err := <-nestedErrCh:
+				errCh <- err
+				return
 			}
 		}
 
+		var timeout time.Duration
+		if caller != nil {
+			timeout = time.Duration(caller.pack.Wait.Timeout) * time.Second
+		} else {
+			timeout = 0
+		}
+		err := d.deployNode(ctx, n, timeout)
+		if err != nil {
+			errCh <- err
+			return
+		}
+
+		//if n.pack.Wait != nil {
+		//	ctx, cancelFn := context.WithTimeout(context.Background(), time.Second * time.Duration(n.pack.Wait.Timeout))
+		//	d.eventListener.WaitForEventType(ctx, n.pack.Wait.For, AddEventType)
+		//
+		//	n.deployed = true
+		//	cancelFn()
+		//}
+		//for _, m := range n.pack.Manifests {
+		//	err := d.kubeClient.ApplyManifest(ctx, m)
+		//	if err != nil {
+		//		errCh <- err
+		//	}
+		//}
+		//time.Sleep(10 * time.Second)
+
+		wg.Done()
+	}
+}
+
+func (d *deployControllerImpl) deployNode(ctx context.Context, n *DeployNode, timeout time.Duration) error {
+	wg := new(sync.WaitGroup)
+	wg.Add(len(n.pack.Manifests))
+
+	errCh := make(chan error)
+
+	// if timeout is not set, lets set it to 9 hours. Guess should be enough :-)
+	if timeout == 0 {
+		timeout = time.Hour * 9
+	}
+
+	go func() {
 		for _, m := range n.pack.Manifests {
 			err := d.kubeClient.ApplyManifest(ctx, m)
 			if err != nil {
 				errCh <- err
 			}
+			n.deployed = true
+			wg.Done()
 		}
+	}()
 
-		time.Sleep(10 * time.Second)
-		n.deployed = true
-		wg.Done()
+	c := make(chan struct{})
+
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+
+	select {
+	case <-c:
+		log.Debugf("package %s deployed", n.name)
+	case err := <-errCh:
+		return fmt.Errorf("error deploy node. OError: %v", err)
+	case <-time.After(timeout):
+		return fmt.Errorf("deploy node timeout reached")
+	case <-ctx.Done():
+		return fmt.Errorf("context close reached")
 	}
+	return nil
 }
 
 func (d *deployControllerImpl) getNodesQueue(packs []*models.Package) ([]*DeployNode, error) {

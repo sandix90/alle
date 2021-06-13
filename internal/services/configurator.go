@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 	"html/template"
 	"io"
@@ -16,92 +17,124 @@ import (
 )
 
 type Configurator interface {
-	ParseConfig(aleConfig *models.AlleConfig, environment string, fileReader io.Reader) error
 	findPackageByLabel(pack *models.Package, labels []string) bool
-	GetStringManifestsByLabels(aleConfig *models.AlleConfig, labels []string) ([]string, error)
+	GetStringManifestsByLabels(labels []string) ([]string, error)
 	GetStringPackageManifests(pack *models.Package) ([]string, error)
-	GetPackagesByLabels(alleConfig *models.AlleConfig, labels []string) []*models.Package
+	GetPackagesByLabels(labels []string) []*models.Package
+	GetAlleConfig() (*models.AlleConfig, error)
 }
 
-type ConfiguratorImpl struct {
-	templator Templator
+type configuratorImpl struct {
+	templator  Templator
+	alleConfig *models.AlleConfig
 }
 
-func NewConfigurator(templator Templator) Configurator {
-	return &ConfiguratorImpl{
-		templator: templator,
+func NewConfiguratorFromFile(templator Templator, environment string, filepath string) (Configurator, error) {
+
+	workDir, err := os.Getwd()
+	log.Debugf("Workdir: %s", workDir)
+	log.Debugf("Using alle file: %s", filepath)
+
+	err = internal.Exists(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("alle file is not found")
 	}
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("error open file: %s. OErr: %v", filepath, err)
+	}
+
+	configurator, err := NewConfigurator(templator, environment, file)
+	if err != nil {
+		return nil, fmt.Errorf("error creating configurator. OError: %w", err)
+	}
+
+	return configurator, nil
 }
 
-func (configurator *ConfiguratorImpl) ParseConfig(alleConfig *models.AlleConfig, environment string, configReader io.Reader) error {
+func NewConfigurator(templator Templator, environment string, configReader io.Reader) (Configurator, error) {
+	alleConfig, err := parseConfig(templator, environment, configReader)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing config. OError: %v", err)
+	}
+	return &configuratorImpl{
+		templator:  templator,
+		alleConfig: alleConfig,
+	}, nil
+}
+
+func parseConfig(templator Templator, environment string, configReader io.Reader) (*models.AlleConfig, error) {
 
 	var b bytes.Buffer
+	alleConfig := new(models.AlleConfig)
+
 	tmpl := template.New("config_template")
 
 	fileStr, err := ioutil.ReadAll(configReader)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	tmpl, err = tmpl.Parse(string(fileStr))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = tmpl.Execute(&b, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	err = yaml.Unmarshal(b.Bytes(), alleConfig)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	alleConfig.Environment = environment
 
 	err = internal.ValidateStruct(alleConfig)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, release := range alleConfig.Releases {
 		for _, pack := range release.Packages {
 
 			if found := findPackageDuplicates(release.Packages, pack.Name); found {
-				return fmt.Errorf("duplicate packages names not allowed. Duplicated pack name: \"%s\"", pack.Name)
+				return nil, fmt.Errorf("duplicate packages names not allowed. Duplicated pack name: \"%s\"", pack.Name)
 			}
 
-			packageValues, err := configurator.calculateTemplateValuesByFilePaths(pack.VarsFilePaths)
+			packageValues, err := calculateTemplateValuesByFilePaths(templator, pack.VarsFilePaths)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			pack.SetPackageValues(packageValues)
 
 			var newManifests []*models.Manifest
 			for _, manifest := range pack.Manifests {
 
-				manifestValues, err := configurator.calculateTemplateValuesByFilePaths(manifest.VarsFilePaths)
+				manifestValues, err := calculateTemplateValuesByFilePaths(templator, manifest.VarsFilePaths)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
-				mergedValues := configurator.templator.MergeValues(packageValues, manifestValues)
+				mergedValues := templator.MergeValues(packageValues, manifestValues)
 				templatePath := fmt.Sprintf("%s/manifests/%s", pack.Path, manifest.Name)
 
 				// Prepare string manifest
 				templateFileReader, err := os.Open(templatePath)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				var tmplWriter bytes.Buffer
-				err = configurator.templator.RenderTemplate(templateFileReader, &tmplWriter, mergedValues)
+				err = templator.RenderTemplate(templateFileReader, &tmplWriter, mergedValues)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				err = templateFileReader.Close()
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				manifest, err = models.NewManifest(
@@ -115,17 +148,21 @@ func (configurator *ConfiguratorImpl) ParseConfig(alleConfig *models.AlleConfig,
 				newManifests = append(newManifests, manifest)
 
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 			pack.Manifests = newManifests
 		}
 	}
 
-	return nil
+	return alleConfig, nil
 }
 
-func (configurator *ConfiguratorImpl) findPackageByLabel(pack *models.Package, labels []string) bool {
+func (configurator *configuratorImpl) GetAlleConfig() (*models.AlleConfig, error) {
+	return configurator.alleConfig, nil
+}
+
+func (configurator *configuratorImpl) findPackageByLabel(pack *models.Package, labels []string) bool {
 	for l, v := range pack.Labels {
 		for _, al := range labels {
 			parts := strings.Split(al, "=")
@@ -137,9 +174,9 @@ func (configurator *ConfiguratorImpl) findPackageByLabel(pack *models.Package, l
 	return false
 }
 
-func (configurator *ConfiguratorImpl) GetStringManifestsByLabels(aleConfig *models.AlleConfig, labels []string) ([]string, error) {
+func (configurator *configuratorImpl) GetStringManifestsByLabels(labels []string) ([]string, error) {
 	var tmpls []string
-	for _, release := range aleConfig.Releases {
+	for _, release := range configurator.alleConfig.Releases {
 		//
 		//out, err := release.GetStringPreConfigManifests()
 		//log.Debugln(out)
@@ -158,7 +195,7 @@ func (configurator *ConfiguratorImpl) GetStringManifestsByLabels(aleConfig *mode
 	return tmpls, nil
 }
 
-func (configurator *ConfiguratorImpl) GetStringPackageManifests(pack *models.Package) ([]string, error) {
+func (configurator *configuratorImpl) GetStringPackageManifests(pack *models.Package) ([]string, error) {
 	var templatesOutput []string
 
 	for _, manifest := range pack.Manifests {
@@ -219,10 +256,10 @@ func (configurator *ConfiguratorImpl) GetStringPackageManifests(pack *models.Pac
 	return templatesOutput, nil
 }
 
-func (configurator *ConfiguratorImpl) GetPackagesByLabels(alleConfig *models.AlleConfig, labels []string) []*models.Package {
+func (configurator *configuratorImpl) GetPackagesByLabels(labels []string) []*models.Package {
 	var foundPackages []*models.Package
 
-	for _, release := range alleConfig.Releases {
+	for _, release := range configurator.alleConfig.Releases {
 		for _, pack := range release.Packages {
 			if configurator.findPackageByLabel(pack, labels) {
 				foundPackages = append(foundPackages, pack)
@@ -232,7 +269,7 @@ func (configurator *ConfiguratorImpl) GetPackagesByLabels(alleConfig *models.All
 	return foundPackages
 }
 
-func (configurator *ConfiguratorImpl) calculateTemplateValuesByFilePaths(filePaths []string) (models.TemplateValues, error) {
+func calculateTemplateValuesByFilePaths(templator Templator, filePaths []string) (models.TemplateValues, error) {
 
 	finalValues := models.TemplateValues{}
 
@@ -244,12 +281,12 @@ func (configurator *ConfiguratorImpl) calculateTemplateValuesByFilePaths(filePat
 
 		// Read values from vars file
 		lv := models.TemplateValues{}
-		err = configurator.templator.ParseValues(&lv, file)
+		err = templator.ParseValues(&lv, file)
 		if err != nil {
 			return models.TemplateValues{}, err
 		}
 
-		finalValues = configurator.templator.MergeValues(finalValues, lv)
+		finalValues = templator.MergeValues(finalValues, lv)
 
 		err = file.Close()
 		if err != nil {

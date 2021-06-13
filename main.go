@@ -7,7 +7,8 @@ import (
 )
 
 func main() {
-	commander, err := cmd.NewCommander()
+
+	commander, err := cmd.RootCmd()
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)

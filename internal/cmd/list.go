@@ -1,34 +1,34 @@
 package cmd
 
 import (
+	"alle/internal/kube"
 	"context"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"time"
 )
 
-func listCmd(handler Handler) *cobra.Command {
+func listCmd() *cobra.Command {
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "list",
-		Run: func(cmd *cobra.Command, args []string) {
-			err := handler(args)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kubeClient, err := kube.NewKubeClientFromKubeConfigEnv(environment)
 			if err != nil {
-				log.Error(err)
+				return err
 			}
-			return
+
+			log.Infof("Getting deployed entities...")
+			ctx, cancelFn := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancelFn()
+			manifests, err := kubeClient.GetManifestsList(ctx)
+			if err != nil {
+				return err
+			}
+			log.Println(manifests)
+			return nil
 		},
 	}
 	listCmd.PersistentFlags().StringVarP(&environment, "environment", "e", "", "environment")
 	return listCmd
-}
-
-func (cli *cli) listEntities(args []string) error {
-
-	log.Infof("Getting deployed entities...")
-	ctx := context.Background()
-	_, err := cli.kubeClient.GetManifestsList(ctx)
-	if err != nil {
-		return err
-	}
-	return nil
 }

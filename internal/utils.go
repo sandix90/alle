@@ -29,7 +29,7 @@ func Exists(path string) error {
 			//log.Errorf("File %s doesn't exist", path)
 			return err
 		} else {
-			err := errors.New("Bad file.")
+			err := errors.New("bad file")
 			return err
 		}
 	}

@@ -18,6 +18,8 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/clientcmd"
+	"os"
 )
 
 const ALLEVERSION = "0.0.1"
@@ -35,6 +37,20 @@ type kubernetesClientImpl struct {
 	config          *rest.Config
 	namespace       string
 	discoveryClient *discovery.DiscoveryClient
+}
+
+func NewKubeClientFromKubeConfigEnv(environment string) (IKubeClient, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	if err != nil {
+		return nil, err
+	}
+	dynclient, err := dynamic.NewForConfig(config)
+	kubeClient, err := NewKubeClient(dynclient, environment, config)
+	if err != nil {
+		log.Errorf("Error creating KubeClient. OError: %v", err)
+		return nil, err
+	}
+	return kubeClient, nil
 }
 
 func NewKubeClient(client dynamic.Interface, namespace string, config *rest.Config) (IKubeClient, error) {
@@ -76,7 +92,7 @@ func (k *kubernetesClientImpl) ApplyManifest(ctx context.Context, manifest model
 	if err != nil {
 		return err
 	}
-	log.Debugf(`Manifest "%s" applied`, manifest.GetFullName())
+	log.Debugf(`manifest "%s" applied`, manifest.GetFullName())
 	err = k.createAlleCrdManifest(ctx, manifest)
 	if err != nil {
 		return err
@@ -239,7 +255,7 @@ func (k *kubernetesClientImpl) createAlleCrdManifest(ctx context.Context, manife
 	if err != nil {
 		return err
 	}
-	log.Debugf(`CRD Alle Manifest "%s" applied`, manifest.GetFullName())
+	log.Debugf(`crd "%s" applied`, manifest.GetFullName())
 
 	return nil
 }

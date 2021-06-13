@@ -3,11 +3,14 @@ package kube
 import (
 	"context"
 	"errors"
-	apiextensionv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	log "github.com/sirupsen/logrus"
+	apiextensionv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextv1beta1 "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"os"
 	"time"
 )
 
@@ -19,21 +22,29 @@ var (
 	ErrAlleInitialized = errors.New("alle is already initialised")
 )
 
-type KubeInitializer interface {
+// AlleInitializer is used to sync all service entities with kubernetes
+type AlleInitializer interface {
 	Init() error
 }
 
-type kubeInitializer struct {
+type alleKubeInitializer struct {
 	client    dynamic.Interface
 	namespace string
 	config    *rest.Config
 }
 
-func NewKubeInitializer(client dynamic.Interface, namespace string, config *rest.Config) KubeInitializer {
-	return &kubeInitializer{client: client, namespace: namespace, config: config}
+func NewKubeInitializer(namespace string) (AlleInitializer, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	if err != nil {
+		return nil, err
+	}
+	client, err := dynamic.NewForConfig(config)
+	return &alleKubeInitializer{client: client, namespace: namespace, config: config}, nil
 }
 
-func (ki *kubeInitializer) Init() error {
+func (ki *alleKubeInitializer) Init() error {
+
+	log.Infof("Initialize alle...")
 
 	ctx, cancelFunc := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancelFunc()
@@ -43,7 +54,7 @@ func (ki *kubeInitializer) Init() error {
 		return err
 	}
 
-	crdClient := apixClient.ApiextensionsV1beta1().CustomResourceDefinitions()
+	crdClient := apixClient.ApiextensionsV1().CustomResourceDefinitions()
 	_, err = crdClient.Get(ctx, AlleCrdManifestName, metav1.GetOptions{})
 	if err == nil {
 		return ErrAlleInitialized
@@ -60,6 +71,28 @@ func (ki *kubeInitializer) Init() error {
 				Name:    "v1",
 				Served:  true,
 				Storage: true,
+				Schema: &apiextensionv1beta1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionv1beta1.JSONSchemaProps{
+						Type: "object",
+						Properties: map[string]apiextensionv1beta1.JSONSchemaProps{
+							"spec": {
+								Type:     "object",
+								Required: []string{"kind", "apiVersion"},
+								Properties: map[string]apiextensionv1beta1.JSONSchemaProps{
+									"kind":       {Type: "string"},
+									"apiVersion": {Type: "string"},
+									"metadata": {
+										Type: "object",
+										Properties: map[string]apiextensionv1beta1.JSONSchemaProps{
+											"alle_version":  {Type: "string"},
+											"manifest_name": {Type: "string"},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
 			}},
 			Names: apiextensionv1beta1.CustomResourceDefinitionNames{
 				Plural:     "allemanifests",
@@ -68,25 +101,6 @@ func (ki *kubeInitializer) Init() error {
 				ShortNames: []string{"am"},
 			},
 			Scope: apiextensionv1beta1.NamespaceScoped,
-			Validation: &apiextensionv1beta1.CustomResourceValidation{
-				OpenAPIV3Schema: &apiextensionv1beta1.JSONSchemaProps{
-					Properties: map[string]apiextensionv1beta1.JSONSchemaProps{
-						"spec": {
-							Required: []string{"kind", "apiVersion"},
-							Properties: map[string]apiextensionv1beta1.JSONSchemaProps{
-								"kind":       {Type: "string"},
-								"apiVersion": {Type: "string"},
-								"metadata": {
-									Properties: map[string]apiextensionv1beta1.JSONSchemaProps{
-										"alle_version":  {Type: "string"},
-										"manifest_name": {Type: "string"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 	}
 
@@ -94,5 +108,7 @@ func (ki *kubeInitializer) Init() error {
 	if err != nil {
 		return err
 	}
+
+	log.Infof("Initialize alle done.")
 	return nil
 }

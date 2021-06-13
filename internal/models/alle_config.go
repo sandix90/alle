@@ -3,7 +3,7 @@ package models
 type Wait struct {
 	For       string `validate:"required"`
 	Condition string `validate:"required"`
-	Timeout   string
+	Timeout   int
 }
 
 type TemplateValues struct {

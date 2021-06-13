@@ -1,16 +1,12 @@
 package services
 
 import (
-	"alle/internal/models"
 	"bytes"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestConfigurator(t *testing.T) {
-
-	templator := NewTemplator()
-	configurator := NewConfigurator(templator)
 
 	t.Run("nginx_configurator_parse_test", func(t *testing.T) {
 		config := `
@@ -31,10 +27,16 @@ releases:
         labels:
           pkg: nginx
 `
-		alleConfig := new(models.AlleConfig)
+
+		templator := NewTemplator()
+
 		configReader := bytes.NewBufferString(config)
-		err := configurator.ParseConfig(alleConfig, "test_environment", configReader)
+		configurator, err := NewConfigurator(templator, "test_environment", configReader)
 		assert.Nil(t, err)
+
+		alleConfig, err := configurator.GetAlleConfig()
+		assert.NoError(t, err)
+
 		assert.Equal(t, "test_environment", alleConfig.Environment)
 		assert.Equal(t, 1, len(alleConfig.Releases))
 		assert.Equal(t, 1, len(alleConfig.Releases[0].Packages))
@@ -72,18 +74,21 @@ releases:
         labels:
           pkg: nginx
 `
-		alleConfig := new(models.AlleConfig)
+
+		templator := NewTemplator()
+
 		configReader := bytes.NewBufferString(config)
-		err := configurator.ParseConfig(alleConfig, "test_environment", configReader)
+		configurator, err := NewConfigurator(templator, "test_environment", configReader)
+
 		assert.Nil(t, err)
 
-		packs := configurator.GetPackagesByLabels(alleConfig, []string{"pkg=nginx"})
+		packs := configurator.GetPackagesByLabels([]string{"pkg=nginx"})
 		assert.Equal(t, 1, len(packs))
 
-		packs = configurator.GetPackagesByLabels(alleConfig, []string{"pkg=unknown"})
+		packs = configurator.GetPackagesByLabels([]string{"pkg=unknown"})
 		assert.Equal(t, 0, len(packs))
 
-		packs = configurator.GetPackagesByLabels(alleConfig, []string{"bad_label"})
+		packs = configurator.GetPackagesByLabels([]string{"bad_label"})
 		assert.Equal(t, 0, len(packs))
 	})
 

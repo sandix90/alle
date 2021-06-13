@@ -1,7 +1,7 @@
 package kube
 
 import (
-	"fmt"
+	"context"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -12,12 +12,33 @@ import (
 
 type KubeEventListenerHandler func(obj *unstructured.Unstructured) error
 
-func StartListening(client dynamic.Interface, stopCh <-chan struct{}, waitChannel chan *unstructured.Unstructured,
-	gvr *schema.GroupVersionResource, namespace string) {
+const (
+	AddEventType = iota
+	UpdateEventType
+	DeleteEventType
+)
 
-	f := dynamicinformer.NewFilteredDynamicSharedInformerFactory(client, 0, namespace, nil)
+type EventListener interface {
+	listen(ctx context.Context, waitChannel chan *unstructured.Unstructured,
+		gvr schema.GroupVersionResource, namespace string, eventType int) error
+	WaitForEventType(ctx context.Context, name string, eventType int)
+	WaitForWithType(ctx context.Context, waitFor string, eventType int, callback KubeEventListenerHandler)
+}
 
-	informer := f.ForResource(*gvr)
+type eventListener struct {
+	client dynamic.Interface
+}
+
+func NewEventListener(client dynamic.Interface) EventListener {
+	return &eventListener{client: client}
+}
+
+func (el *eventListener) listen(ctx context.Context, waitChannel chan *unstructured.Unstructured,
+	gvr schema.GroupVersionResource, namespace string, eventType int) error {
+
+	f := dynamicinformer.NewFilteredDynamicSharedInformerFactory(el.client, 0, namespace, nil)
+
+	informer := f.ForResource(gvr)
 	s := informer.Informer()
 
 	funcs := cache.ResourceEventHandlerFuncs{
@@ -47,32 +68,41 @@ func StartListening(client dynamic.Interface, stopCh <-chan struct{}, waitChanne
 			}
 		},
 	}
-
+	stopCh := make(chan struct{})
 	s.AddEventHandler(funcs)
 	s.Run(stopCh)
-}
-
-func EventListenerHandler(obj *unstructured.Unstructured) error {
-	log.Debugln(obj.GetName(), obj.GetUID())
 	return nil
 }
 
-func WaitFor(client dynamic.Interface, stopCh <-chan struct{}, waitChannel chan *unstructured.Unstructured,
-	gvr *schema.GroupVersionResource, namespace string) error {
+func (el *eventListener) WaitForEventType(ctx context.Context, name string, eventType int) {
 
-	go StartListening(client, stopCh, waitChannel, gvr, namespace)
-
-	select {
-	case unStr := <-waitChannel:
-		log.Debugln(unStr)
-		dynRes := client.Resource(*gvr).Namespace(namespace)
-		log.Debugln(dynRes)
-	case <-stopCh:
-		return fmt.Errorf("listening stopped")
-	}
-
-	return nil
 }
+
+func (el *eventListener) WaitForWithType(ctx context.Context, waitFor string, eventType int, callback KubeEventListenerHandler) {
+
+}
+
+//func EventListenerHandler(obj *unstructured.Unstructured) error {
+//	log.Debugln(obj.GetName(), obj.GetUID())
+//	return nil
+//}
+
+//func WaitFor(client dynamic.Interface, stopCh <-chan struct{}, waitChannel chan *unstructured.Unstructured,
+//	gvr *schema.GroupVersionResource, namespace string) error {
+//
+//	go StartListening(client, stopCh, waitChannel, gvr, namespace)
+//
+//	select {
+//	case unStr := <-waitChannel:
+//		log.Debugln(unStr)
+//		dynRes := client.Resource(*gvr).Namespace(namespace)
+//		log.Debugln(dynRes)
+//	case <-stopCh:
+//		return fmt.Errorf("listening stopped")
+//	}
+//
+//	return nil
+//}
 
 //func MonitorPods() error {
 //	clientSet, err := GetKubeClient()
